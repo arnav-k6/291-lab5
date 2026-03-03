@@ -1,8 +1,3 @@
-// Lab5_ADC_MinimalChange_LCD.c                                           // File name comment
-// Minimal-change version of prof's ADC.c + your LCD_4bit.c                // What this file is
-// Measures Frequency, Vrms of CH1/CH2, and Phase using ADC midpoint       // What it measures
-// Displays results on LCD                                                 // Output device
-
 #include <stdio.h>                                                        // Needed for sprintf
 #include <stdlib.h>                                                       // Standard library
 #include <EFM8LB1.h>                                                      // EFM8LB1 register definitions
@@ -16,7 +11,6 @@
 #define VDD 3.3035                                                        // Measured VDD in volts (use your DMM value)
 #define VMID (VDD/2.0)                                                    // Midpoint voltage (~1.65 V) used as "zero-cross"
 
-// ---------------- LCD pin defines (copied from your LCD_4bit.c) --------
 #define LCD_RS P1_7                                                       // LCD RS pin
 // #define LCD_RW Px_x                                                     // LCD RW not used (tied to GND)
 #define LCD_E  P2_0                                                       // LCD Enable pin (IMPORTANT: don't use P2.0 for ADC)
@@ -26,7 +20,6 @@
 #define LCD_D7 P1_0                                                       // LCD D7 pin
 #define CHARS_PER_LINE 16                                                 // LCD line length
 
-// ---------------------- PROF STARTUP (unchanged style) ------------------
 char _c51_external_startup (void)                                         // Startup function
 {
 	SFRPAGE = 0x00;                                                        // Use default SFR page
@@ -92,7 +85,6 @@ char _c51_external_startup (void)                                         // Sta
 	return 0;                                                              // Done
 }
 
-// ---------------------- PROF ADC INIT (same as your pasted code) --------
 void InitADC (void)                                                       // Initialize ADC
 {
 	SFRPAGE = 0x00;                                                        // Default page
@@ -132,7 +124,6 @@ void InitADC (void)                                                       // Ini
 	ADEN=1;                                                                // Enable ADC
 }
 
-// ---------------------- PROF Timer3 delays (unchanged) ------------------
 void Timer3us(unsigned char us)                                            // Delay in microseconds
 {
 	unsigned char i;                                                       // Loop counter
@@ -159,7 +150,6 @@ void waitms (unsigned int ms)                                              // De
 		for (k=0; k<4; k++) Timer3us(250);                                  // 4*250us = 1ms
 }
 
-// ---------------------- PROF InitPinADC (unchanged) ---------------------
 void InitPinADC (unsigned char portno, unsigned char pinno)                // Configure a pin as analog
 {
 	unsigned char mask;                                                    // Bit mask
@@ -186,7 +176,6 @@ void InitPinADC (unsigned char portno, unsigned char pinno)                // Co
 	SFRPAGE = 0x00;                                                        // Back to default
 }
 
-// ---------------------- PROF ADC read (unchanged) -----------------------
 unsigned int ADC_at_Pin(unsigned char pin)                                 // Return raw ADC counts
 {
 	ADC0MX = pin;                                                          // Select mux pin
@@ -200,10 +189,6 @@ float Volts_at_Pin(unsigned char pin)                                      // Re
 {
 	return ((ADC_at_Pin(pin)*VDD)/0b_0011_1111_1111_1111);                  // Convert 14-bit code to volts
 }
-
-// =======================================================================
-// ======================= ADDED: LCD FUNCTIONS (exact from your file) ====
-// =======================================================================
 
 void LCD_pulse (void)                                                      // Pulse enable pin
 {
@@ -266,11 +251,6 @@ void LCDprint(char * string, unsigned char line, bit clear)                // Pr
 	if(clear) for(; j<CHARS_PER_LINE; j++) WriteData(' ');                  // Clear rest of line
 }
 
-// =======================================================================
-// ======================= ADDED: MEASUREMENT HELPERS =====================
-// =======================================================================
-
-// -------- Timer0 setup (new) --------
 void Timer0_Init16bit(void)                                                // Init Timer0 for timing
 {
 	TMOD &= ~0x03;                                                         // Clear Timer0 mode bits
@@ -301,7 +281,6 @@ float CountsToSeconds(unsigned int counts)                                 // Co
 	return ((float)counts * 12.0f) / (float)SYSCLK;                        // seconds = counts / (SYSCLK/12)
 }
 
-// -------- ADC midpoint crossing (new) --------
 void WaitForMidCross(unsigned char pin, bit rising)                        // Wait for VMID crossing
 {
 	float v_prev;                                                          // Previous voltage sample
@@ -326,7 +305,6 @@ void WaitForMidCross(unsigned char pin, bit rising)                        // Wa
 	}
 }
 
-// -------- Half period measurement (new) --------
 float Measure_HalfPeriod(unsigned char pin)                                 // Measure T/2 using rising->falling
 {
 	unsigned int counts;                                                    // Timer counts
@@ -340,7 +318,6 @@ float Measure_HalfPeriod(unsigned char pin)                                 // M
 	return t_half;                                                          // Return half period
 }
 
-// -------- One-shot peak measurement (new) --------
 float OneShotPeak(unsigned char pin, float t_half)                          // Sample near peak using T/4 delay
 {
 	unsigned long delay_us;                                                 // Delay in microseconds
@@ -365,7 +342,6 @@ float OneShotPeak(unsigned char pin, float t_half)                          // S
 	return v_peak;                                                          // Return peak magnitude
 }
 
-// -------- Phase measurement (new) --------
 float Measure_Phase(unsigned char ref, unsigned char test, float t_half)    // Phase using time between mid crossings
 {
 	float T;                                                                // Full period seconds
@@ -388,14 +364,119 @@ float Measure_Phase(unsigned char ref, unsigned char test, float t_half)    // P
 	return phase;                                                           // Return phase
 }
 
-// =======================================================================
-// ======================= MINIMAL-CHANGE MAIN() ==========================
-// =======================================================================
+volatile unsigned long t0_ovf = 0;                                         // Timer0 overflow counter (for long dt)
+
+void Timer0_ResetStart32(void)                                             // Reset and start Timer0 (32-bit via overflow count)
+{
+	TR0 = 0;                                                               // Stop timer
+	TH0 = 0;                                                               // Clear high byte
+	TL0 = 0;                                                               // Clear low byte
+	TF0 = 0;                                                               // Clear overflow flag
+	t0_ovf = 0;                                                            // Clear overflow counter
+	TR0 = 1;                                                               // Start timer
+}
+
+unsigned long Timer0_ReadStop32(void)                                      // Stop and read Timer0 extended counts
+{
+	unsigned long t;                                                       // Full 32-bit count
+	TR0 = 0;                                                               // Stop timer
+	t = ((unsigned long)t0_ovf << 16) | ((unsigned long)TH0 << 8) | (unsigned long)TL0; // Combine
+	return t;                                                              // Return counts
+}
+
+float Counts32ToSeconds(unsigned long counts)                              // Convert extended counts to seconds
+{
+	return ((float)counts * 12.0f) / (float)SYSCLK;                        // seconds = counts / (SYSCLK/12)
+}
+
+void WaitForMidCross_T0(unsigned char pin, bit rising)                     // Wait for VMID crossing, tracking Timer0 overflow
+{
+	float v_prev;                                                          // Previous voltage sample
+	float v_now;                                                           // Current voltage sample
+
+	v_prev = Volts_at_Pin(pin);                                            // Take initial sample
+
+	while(1)                                                               // Loop until crossing found
+	{
+		if(TF0)                                                            // If Timer0 overflow happened
+		{
+			TF0 = 0;                                                       // Clear overflow flag
+			t0_ovf++;                                                      // Count it
+		}
+
+		v_now = Volts_at_Pin(pin);                                         // Take next sample
+
+		if(rising)                                                         // If rising crossing wanted
+		{
+			if((v_prev < VMID) && (v_now >= VMID)) return;                 // Below->above means crossing
+		}
+		else                                                               // Otherwise falling crossing wanted
+		{
+			if((v_prev > VMID) && (v_now <= VMID)) return;                 // Above->below means crossing
+		}
+
+		v_prev = v_now;                                                    // Update previous
+	}
+}
+
+float Measure_Period(unsigned char ref)                                    // Measure full period using ref rising->rising
+{
+	unsigned long counts;                                                   // Timer counts
+	float T;                                                                // Period seconds
+
+	WaitForMidCross_T0(ref, 1);                                             // Sync to ref rising
+	Timer0_ResetStart32();                                                  // Start timing
+	WaitForMidCross_T0(ref, 1);                                             // Next ref rising
+	counts = Timer0_ReadStop32();                                           // Stop+read
+	T = Counts32ToSeconds(counts);                                          // Convert to seconds
+	return T;                                                               // Return period
+}
+
+float Measure_Phase_Signed(unsigned char ref, unsigned char test)           // Robust signed phase (works for lead and lag)
+{
+	float T;                                                                // Full period seconds
+	float dt_rt;                                                           // ref -> test time
+	float dt_tr;                                                           // test -> ref time
+	unsigned long counts;                                                   // Timer counts
+	float phase;                                                           // Phase degrees
+
+	T = Measure_Period(ref);                                                // True period from reference
+	if(T <= 0.0f) return 0.0f;                                              // Guard
+
+	// Measure ref -> test
+	WaitForMidCross_T0(ref, 1);                                             // Ref rising
+	Timer0_ResetStart32();                                                  // Start timer
+	WaitForMidCross_T0(test, 1);                                            // Test rising
+	counts = Timer0_ReadStop32();                                           // Stop+read
+	dt_rt = Counts32ToSeconds(counts);                                      // Convert to seconds
+
+	// Measure test -> ref
+	WaitForMidCross_T0(test, 1);                                            // Test rising
+	Timer0_ResetStart32();                                                  // Start timer
+	WaitForMidCross_T0(ref, 1);                                             // Ref rising
+	counts = Timer0_ReadStop32();                                           // Stop+read
+	dt_tr = Counts32ToSeconds(counts);                                      // Convert to seconds
+
+	if(dt_rt <= dt_tr)
+	{
+		phase = (dt_rt / T) * 360.0f;                                      // Positive lag
+	}
+	else
+	{
+		phase = - (dt_tr / T) * 360.0f;                                    // Negative lead
+	}
+
+	// Optional safety wrap (keeps it in [-180, 180]) without changing sign meaning
+	if(phase > 180.0f) phase -= 360.0f;
+	if(phase < -180.0f) phase += 360.0f;
+
+	return phase;                                                           // Return signed phase
+}
 
 void main (void)                                                           // Main program
 {
-	char line1[17];                                                        // LCD line 1 buffer
-	char line2[17];                                                        // LCD line 2 buffer
+	char xdata line1[17];
+	char xdata line2[17];
 
 	float t_half;                                                          // Half period
 	float freq;                                                            // Frequency
@@ -405,7 +486,6 @@ void main (void)                                                           // Ma
 	float v2_rms;                                                          // CH2 RMS
 	float phase;                                                           // Phase degrees
 
-	// --- Minimal change from prof ADC.c: keep pin setup style -------------
 	InitPinADC(2, 2);                                                       // Configure P2.2 analog input (CH1)
 	InitPinADC(2, 3);                                                       // Configure P2.3 analog input (CH2)
 	InitADC();                                                              // Initialize ADC (prof function)
@@ -431,15 +511,31 @@ void main (void)                                                           // Ma
 		v1_rms = v1_peak * 0.70710678f;                                      // Vrms = Vpeak / sqrt(2)
 		v2_rms = v2_peak * 0.70710678f;                                      // Same for CH2
 
-		// 5) Phase difference using time shift                                // Step explanation
-		phase = Measure_Phase(QFP32_MUX_P2_2, QFP32_MUX_P2_3, t_half);         // CH2 relative to CH1
+		// 5) Phase difference using time shift (FIXED for negative)           // Step explanation
+		phase = Measure_Phase_Signed(QFP32_MUX_P2_2, QFP32_MUX_P2_3);          // CH2 relative to CH1 (signed lead/lag)
 
 		// 6) Display on LCD                                                   // Step explanation
-		sprintf(line1, "F=%4.1fHz P=%+4.0f", freq, phase);                     // Format top line
-		LCDprint(line1, 1, 1);                                                // Print top line
+		{
+	int freq_x10;
+	int phase_i;
+	int v1_cV, v2_cV;   // centivolts (V*100)
 
-		sprintf(line2, "V1=%1.2f V2=%1.2f", v1_rms, v2_rms);                   // Format bottom line
-		LCDprint(line2, 2, 1);                                                // Print bottom line
+	// Round safely (handles negative too)
+	freq_x10 = (int)(freq * 10.0f + 0.5f);
+	phase_i  = (int)(phase + (phase >= 0.0f ? 0.5f : -0.5f));
+	v1_cV    = (int)(v1_rms * 100.0f + 0.5f);
+	v2_cV    = (int)(v2_rms * 100.0f + 0.5f);
+
+	// Line 1: "F=123.4Hz P=-45"  (fits 16)
+	sprintf(line1, "F=%3d.%1dHz P=%+4d", freq_x10/10, freq_x10%10, phase_i);
+	LCDprint(line1, 1, 1);
+
+	// Line 2: "V1=1.23 V2=2.34" (fits 16)
+	sprintf(line2, "V1=%1d.%02d V2=%1d.%02d",
+	        v1_cV/100, v1_cV%100,
+	        v2_cV/100, v2_cV%100);
+	LCDprint(line2, 2, 1);
+}
 
 		waitms(200);                                                          // Update rate (~5 Hz)
 	}
