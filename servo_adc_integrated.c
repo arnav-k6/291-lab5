@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <EFM8LB1.h>
 
-// ====================== CLOCK / ADC ======================
+
 #define SYSCLK 72000000L
 #define BAUDRATE 115200L
 #define SARCLK 18000000L
@@ -10,7 +10,7 @@
 #define VDD 3.3035
 #define VMID (VDD/2.0)
 
-// ====================== LCD PINS =========================
+
 #define LCD_RS P1_7
 #define LCD_E  P2_0
 #define LCD_D4 P1_3
@@ -19,7 +19,7 @@
 #define LCD_D7 P1_0
 #define CHARS_PER_LINE 16
 
-// ====================== SERVO PIN ========================
+
 #define SERVO_PIN P2_5   // Servo signal on P2.5
 
 char _c51_external_startup (void)
@@ -72,9 +72,9 @@ char _c51_external_startup (void)
 	XBR1     = 0x00;
 	XBR2     = 0x40;
 
-	// ---- SERVO: make P2.5 push-pull output ----
-	SFRPAGE = 0x20;          // port config page
-	P2MDOUT |= 0x20;         // P2.5 push-pull
+	
+	SFRPAGE = 0x20;        
+	P2MDOUT |= 0x20;         
 	SFRPAGE = 0x00;
 
 	#if (((SYSCLK/BAUDRATE)/(2L*12L))>0xFFL)
@@ -197,7 +197,7 @@ float Volts_at_Pin(unsigned char pin)
 	return ((ADC_at_Pin(pin)*VDD)/0b_0011_1111_1111_1111);
 }
 
-// ====================== LCD ======================
+
 void LCD_pulse (void)
 {
 	LCD_E=1;
@@ -259,12 +259,12 @@ void LCDprint(char * string, unsigned char line, bit clear)
 	if(clear) for(; j<CHARS_PER_LINE; j++) WriteData(' ');
 }
 
-// ====================== TIMER0 + MEASUREMENT ======================
+
 void Timer0_Init16bit(void)
 {
 	TMOD &= ~0x03;
 	TMOD |=  0x01;
-	CKCON0 &= ~0x03;     // SYSCLK/12
+	CKCON0 &= ~0x03;     
 	TR0 = 0;
 }
 
@@ -350,7 +350,7 @@ float OneShotPeak(unsigned char pin, float t_half)
 	return v_peak;
 }
 
-// ---- Signed phase logic (lead/lag) ----
+
 volatile unsigned long t0_ovf = 0;
 
 void Timer0_ResetStart32(void)
@@ -430,22 +430,22 @@ float Measure_Phase_Signed(unsigned char ref, unsigned char test)
 	T = Measure_Period(ref);
 	if(T <= 0.0f) return 0.0f;
 
-	// ref -> test
+	
 	WaitForMidCross_T0(ref, 1);
 	Timer0_ResetStart32();
 	WaitForMidCross_T0(test, 1);
 	counts = Timer0_ReadStop32();
 	dt_rt = Counts32ToSeconds(counts);
 
-	// test -> ref
+
 	WaitForMidCross_T0(test, 1);
 	Timer0_ResetStart32();
 	WaitForMidCross_T0(ref, 1);
 	counts = Timer0_ReadStop32();
 	dt_tr = Counts32ToSeconds(counts);
 
-	if(dt_rt <= dt_tr) phase = (dt_rt / T) * 360.0f;     // lag (+)
-	else              phase = - (dt_tr / T) * 360.0f;    // lead (-)
+	if(dt_rt <= dt_tr) phase = (dt_rt / T) * 360.0f;    
+	else              phase = - (dt_tr / T) * 360.0f;    
 
 	if(phase > 180.0f) phase -= 360.0f;
 	if(phase < -180.0f) phase += 360.0f;
@@ -453,8 +453,7 @@ float Measure_Phase_Signed(unsigned char ref, unsigned char test)
 	return phase;
 }
 
-// ====================== SERVO HELPERS ======================
-// Delay any number of microseconds using 250us chunks (Timer3us max ~255)
+
 void delay_us_long(unsigned int us)
 {
 	while (us >= 250)
@@ -465,8 +464,7 @@ void delay_us_long(unsigned int us)
 	if (us > 0) Timer3us((unsigned char)us);
 }
 
-// angle_deg_abs is ALWAYS treated as 0..180 (magnitude)
-// 0 -> 1000us, 180 -> 2000us
+
 void servo_pulse_abs(int angle_deg_abs)
 {
 	unsigned int pulse_us;
@@ -484,7 +482,7 @@ void servo_pulse_abs(int angle_deg_abs)
 	delay_us_long(low_us);
 }
 
-// Hold servo at this angle for hold_ms milliseconds (keeps pulsing every 20ms)
+
 void servo_hold_abs(int angle_deg_abs, unsigned int hold_ms)
 {
 	unsigned int frames, i;
@@ -495,7 +493,7 @@ void servo_hold_abs(int angle_deg_abs, unsigned int hold_ms)
 		servo_pulse_abs(angle_deg_abs);
 }
 
-// ====================== MAIN ======================
+
 void main (void)
 {
 	char xdata line1[17];
@@ -507,16 +505,16 @@ void main (void)
 	float v1_rms, v2_rms;
 	float phase;
 
-	InitPinADC(2, 2);        // P2.2 = CH1
-	InitPinADC(2, 3);        // P2.3 = CH2
+	InitPinADC(2, 2);       
+	InitPinADC(2, 3);       
 	InitADC();
 
 	Timer0_Init16bit();
 	LCD_4BIT();
 
-	// Put servo at "0 degrees" end-stop at startup so later 180 means full 180 from start
+	
 	SERVO_PIN = 0;
-	servo_hold_abs(0, 400);  // ~0.4s of pulses at 0 deg so it actually goes there
+	servo_hold_abs(0, 400); 
 
 	waitms(200);
 
@@ -538,7 +536,7 @@ void main (void)
 
 		phase = Measure_Phase_Signed(QFP32_MUX_P2_2, QFP32_MUX_P2_3);
 
-		// ---------- LCD formatting ----------
+		
 		freq_x10 = (int)(freq * 10.0f + 0.5f);
 		phase_i  = (int)(phase + (phase >= 0.0f ? 0.5f : -0.5f));
 		v1_cV    = (int)(v1_rms * 100.0f + 0.5f);
@@ -552,14 +550,12 @@ void main (void)
 		        v2_cV/100, v2_cV%100);
 		LCDprint(line2, 2, 1);
 
-		// ---------- SERVO: magnitude-only behavior ----------
-		// If phase_i is -180..+180, servo gets |phase| so:
-		//  -180 => 180 degrees, +180 => 180 degrees, 30/-30 => 30 degrees
+		
 		servo_angle_abs = phase_i;
 		if(servo_angle_abs < 0) servo_angle_abs = -servo_angle_abs;
 		if(servo_angle_abs > 180) servo_angle_abs = 180;
 
-		// Keep servo driven for ~200ms (10 pulses) so it holds position
+		
 		servo_hold_abs(servo_angle_abs, 200);
 	}
 }
